@@ -99,7 +99,7 @@ sudo ./setup.sh
 
 **Note**: If you change schedules or ip_notifier settings, run `sudo ./setup.sh` again to apply the changes to Cron/Systemd.
 
-## 📝 Logs
+## Logs
 
 All utilities log to a single file for easy debugging:
 
