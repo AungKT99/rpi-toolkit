@@ -1,0 +1,16 @@
+[Unit]
+Description=Notify Telegram of IP Address on Boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# We will use a placeholder here that setup.sh will replace with your actual path
+ExecStart=/usr/bin/python3 /opt/rpi-toolkit/ip_notifier/ip_notifier.py
+WorkingDirectory=/opt/rpi-toolkit/
+StandardOutput=journal
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
