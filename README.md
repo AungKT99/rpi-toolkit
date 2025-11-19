@@ -5,7 +5,7 @@
 I wanted a way to check its health without needing to SSH in constantly—whether I'm just in the next room or miles away from home. So, I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
 
 ##  What does it do?
-It acts as a lightweight health monitor for your RPi 5.
+It acts as a lightweight health monitor for your RPi 5. Here is what I've implemented so far:
 
 - 📍 **IP Notifier**
 
