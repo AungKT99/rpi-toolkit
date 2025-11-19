@@ -1,30 +1,43 @@
 # rpi-toolkit
 
-A modular suite of system utilities (IP, Temp, Storage) for Ubuntu on Raspberry Pi 5 with automated Telegram notifications.
+#### **Welcome!** This is just a collection of utilities I use to keep an eye on my Raspberry Pi 5, which is constantly working for me at home... ####
 
-This toolkit allows you to monitor the health and status of your Raspberry Pi 5 (Ubuntu Server/Desktop) remotely via Telegram. It includes a set of lightweight Python scripts that run independently to check system vitals and auto-heal critical services.
+I wanted a way to check its health without needing to SSH in every five minutes, so I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
 
-##  Features
+##  What does it do?
+Basically, it's a baby monitor for your server.
 
-- **IP Notifier**: Instantly sends you the new IP address whenever the device connects to a network (WiFi/Ethernet). Great for headless setups.
-- **Temp Monitor**: Watches CPU temperature and alerts you if it exceeds your defined threshold (e.g., 75°C).
-- **Storage Watcher**: Monitors disk usage on root `/` and warns you before the disk fills up.
-- **Service Watchdog**: Checks critical services (SSH, Docker, Cron, etc.). If a service crashes, it auto-restarts it and notifies you.
+It handles the following:
+- 📍 **IP Notifier**
 
-##  Project Structure
+  - **The Problem:** I hate guessing what IP address my Pi picked up after a reboot.
 
-```
-rpi-toolkit/
-├── config.json          # Central configuration (API keys, thresholds, schedules)
-├── setup.sh             # One-click installer (Systemd & Cron setup)
-├── shared/              # Shared code (Telegram sending logic)
-├── ip_notifier/         # Network detection module
-├── temp_monitor/        # CPU thermal monitoring module
-├── storage_watcher/     # Disk usage monitoring module
-└── service_watchdog/    # Service auto-restart module
-```
+  - **The Fix:** This script instantly sends me the new IP address via Telegram whenever it connects to a network (WiFi or Ethernet). Great for headless setups!
 
-##  Installation
+- 🔥 **Temp Monitor**
+
+  - **The Problem:** The Pi 5 can run hot.
+
+  - **The Fix:** Watches the CPU temperature. If it gets too toasty (e.g., over 75°C), it sends an alert so I can check the fans.
+
+- 💾 **Storage Watcher**
+
+  - **The Problem:** Logs fill up, and suddenly nothing works.
+
+  - **The Fix:** Monitors disk usage on root `/`. It warns me before the disk hits 100% so I can clean things up.
+ 
+- 🛡️ **Service Watchdog**
+  - **The Problem:** Sometimes critical stuff (SSH, Docker, Cron) just crashes.
+ 
+  - **The Fix:** It checks if your important services are running. If one crashes, it tries to auto-restart it and lets you know.
+    
+##  Requirement
+- **Raspberry Pi 5** (Should work on Pi 4 too)
+- **Ubuntu Server** (This is what I use. Raspbian or other distros may need small tweaks to paths).
+- **Python 3** (Usually pre-installed, but good to double-check).
+- **Telegram Bot Token** (You can grab a free one from @BotFather).
+
+##  Setup
 
 ### 1. Clone the repository:
 
