@@ -4,7 +4,13 @@
 
 I wanted a way to check its health without needing to SSH in constantly—whether I'm just in the next room or miles away from home. So, I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
 
-##  What does it do?
+##  Requirement
+- **Raspberry Pi 5** (Should work on Pi 4 too)
+- **Ubuntu Server** (This is what I use. Raspbian or other distros may need small tweaks to paths).
+- **Python 3** (Usually pre-installed, but good to double-check).
+- **Telegram Bot Token** (You can grab a free one from @BotFather).
+
+##  Features
 It acts as a lightweight health monitor for your RPi 5. Here is what I've implemented so far:
 
 - 📍 **IP Notifier**
@@ -30,11 +36,6 @@ It acts as a lightweight health monitor for your RPi 5. Here is what I've implem
  
   - **The Fix:** It checks if your important services are running. If one crashes, it tries to auto-restart it and lets you know.
     
-##  Requirement
-- **Raspberry Pi 5** (Should work on Pi 4 too)
-- **Ubuntu Server** (This is what I use. Raspbian or other distros may need small tweaks to paths).
-- **Python 3** (Usually pre-installed, but good to double-check).
-- **Telegram Bot Token** (You can grab a free one from @BotFather).
 
 ##  Setup
 
