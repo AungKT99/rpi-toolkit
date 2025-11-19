@@ -2,12 +2,11 @@
 
 #### **Welcome!** This is just a collection of utilities I use to keep an eye on my Raspberry Pi 5, which is constantly working for me at home... ####
 
-I wanted a way to check its health without needing to SSH in every five minutes, so I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
+I wanted a way to check its health without needing to SSH in constantly—whether I'm just in the next room or miles away from home. So, I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
 
 ##  What does it do?
-Basically, it's a baby monitor for your server.
+It acts as a lightweight health monitor for your RPi 5.
 
-It handles the following:
 - 📍 **IP Notifier**
 
   - **The Problem:** I hate guessing what IP address my Pi picked up after a reboot.
