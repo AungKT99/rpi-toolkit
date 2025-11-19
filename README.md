@@ -4,14 +4,14 @@ A modular suite of system utilities (IP, Temp, Storage) for Ubuntu on Raspberry 
 
 This toolkit allows you to monitor the health and status of your Raspberry Pi 5 (Ubuntu Server/Desktop) remotely via Telegram. It includes a set of lightweight Python scripts that run independently to check system vitals and auto-heal critical services.
 
-## 🚀 Features
+##  Features
 
-- **📡 IP Notifier**: Instantly sends you the new IP address whenever the device connects to a network (WiFi/Ethernet). Great for headless setups.
-- **🌡 Temp Monitor**: Watches CPU temperature and alerts you if it exceeds your defined threshold (e.g., 75°C).
-- **💾 Storage Watcher**: Monitors disk usage on root `/` and warns you before the disk fills up.
-- **🛡 Service Watchdog**: Checks critical services (SSH, Docker, Cron, etc.). If a service crashes, it auto-restarts it and notifies you.
+- **IP Notifier**: Instantly sends you the new IP address whenever the device connects to a network (WiFi/Ethernet). Great for headless setups.
+- **Temp Monitor**: Watches CPU temperature and alerts you if it exceeds your defined threshold (e.g., 75°C).
+- **Storage Watcher**: Monitors disk usage on root `/` and warns you before the disk fills up.
+- **Service Watchdog**: Checks critical services (SSH, Docker, Cron, etc.). If a service crashes, it auto-restarts it and notifies you.
 
-## 📂 Project Structure
+##  Project Structure
 
 ```
 rpi-toolkit/
@@ -24,19 +24,18 @@ rpi-toolkit/
 └── service_watchdog/    # Service auto-restart module
 ```
 
-## 🛠 Installation
+##  Installation
 
 ### 1. Clone the repository:
 
 ```bash
-cd /opt
-sudo git clone https://github.com/YOUR_USERNAME/rpi-toolkit.git
+sudo git clone https://github.com/AungKT99/rpi-toolkit.git
 cd rpi-toolkit
 ```
 
 ### 2. Configure:
 
-Create a `config.json` file in the root directory (this file is not tracked in git for security):
+Create a `config.json` file in the root directory:
 
 ```bash
 nano config.json
@@ -49,19 +48,7 @@ Add your configuration with your Telegram keys:
 - **services_to_monitor**: List of services (e.g., `["ssh", "docker"]`).
 - **schedules**: Set intervals (in minutes) or disable modules (`"enabled": false`).
 
-### 3. Run the Installer:
-
-This script installs dependencies, sets up the systemd boot service for IP notification, and writes the Cron jobs for monitoring.
-
-```bash
-# Make the script executable first
-chmod +x setup.sh
-
-# Run with root privileges
-sudo ./setup.sh
-```
-
-## ⚙ Configuration (`config.json`)
+### Example config.json file
 
 You can control intervals and thresholds without touching the code.
 
@@ -83,6 +70,20 @@ You can control intervals and thresholds without touching the code.
   }
 }
 ```
+
+### 3. Run the Installer:
+
+This script installs dependencies, sets up the systemd boot service for IP notification, and writes the Cron jobs for monitoring.
+
+```bash
+# Make the script executable first
+chmod +x setup.sh
+
+# Run with root privileges
+sudo ./setup.sh
+```
+
+
 
 **Note**: If you change schedules or ip_notifier settings, run `sudo ./setup.sh` again to apply the changes to Cron/Systemd.
 
