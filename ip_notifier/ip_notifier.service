@@ -5,12 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# We will use a placeholder here that setup.sh will replace with your actual path
+# setup.sh replaces /opt/rpi-toolkit with the actual install path
 ExecStart=/usr/bin/python3 /opt/rpi-toolkit/ip_notifier/ip_notifier.py
 WorkingDirectory=/opt/rpi-toolkit/
-StandardOutput=journal
-User=root
-Group=root
+StandardOutput=append:/var/log/rpi-toolkit.log
+StandardError=journal
+# Runs as a dedicated low-privilege user, not root
+User=nobody
+Group=nogroup
 
 [Install]
 WantedBy=multi-user.target
