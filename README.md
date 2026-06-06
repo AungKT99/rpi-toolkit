@@ -1,74 +1,55 @@
 # rpi-toolkit
 
-#### **Welcome!** This is just a collection of utilities I use to keep an eye on my Raspberry Pi 5, which is constantly working for me at home... ####
+A collection of lightweight background utilities to monitor the health of a Raspberry Pi 5. Each module runs independently and sends alerts via Telegram — no need to SSH in just to check if everything is okay.
 
-I wanted a way to check its health without needing to SSH in constantly—whether I'm just in the next room or miles away from home. So, I wrote this collection of modular Python scripts. They run in the background and ping me on Telegram if anything looks suspicious or if the Pi just wants to say "Hi!"
+---
 
-##  Requirement
-- **Raspberry Pi 5** (Should work on Pi 4 too)
-- **Ubuntu Server** (This is what I use. Raspbian or other distros may need small tweaks to paths).
-- **Python 3** (Usually pre-installed, but good to double-check).
-- **Telegram Bot Token** (You can grab a free one from @BotFather).
+## Requirements
 
-##  Features
-It acts as a lightweight health monitor for your RPi 5. Here is what I've implemented so far:
+- **Raspberry Pi 5** (should also work on Pi 4)
+- **Ubuntu Server** (other distros may need minor path adjustments)
+- **Python 3** (usually pre-installed)
+- **Telegram Bot Token** — get one from [@BotFather](https://t.me/BotFather)
 
-- 📍 **IP Notifier**
+---
 
-  - **The Problem:** I hate guessing what IP address my Pi picked up after a reboot.
+## Features
 
-  - **The Fix:** This script instantly sends me the new IP address via Telegram whenever it connects to a network (WiFi or Ethernet). Great for headless setups!
+### IP Notifier
+Sends the Pi's current IP address to Telegram whenever it connects to a network. Useful for headless setups where the IP can change after a reboot.
 
-- 🔥 **Temp Monitor**
+### Temperature Monitor
+Reads the CPU temperature at regular intervals. Sends an alert if it exceeds a configurable threshold (default: 75°C).
 
-  - **The Problem:** The Pi 5 can run hot.
+### Storage Watcher
+Monitors disk usage on the root partition `/`. Sends a warning before the disk fills up so you have time to act.
 
-  - **The Fix:** Watches the CPU temperature. If it gets too toasty (e.g., over 75°C), it sends an alert so I can check the fans.
+### Service Watchdog
+Checks that critical services (e.g. SSH, Docker, Cron) are running. If a service is down, it attempts an automatic restart and notifies you of the outcome.
 
-- 💾 **Storage Watcher**
+---
 
-  - **The Problem:** Logs fill up, and suddenly nothing works.
+## Setup
 
-  - **The Fix:** Monitors disk usage on root `/`. It warns me before the disk hits 100% so I can clean things up.
- 
-- 🛡️ **Service Watchdog**
-  - **The Problem:** Sometimes critical stuff (SSH, Docker, Cron) just crashes.
- 
-  - **The Fix:** It checks if your important services are running. If one crashes, it tries to auto-restart it and lets you know.
-    
-
-##  Setup
-
-### 1. Clone the repository:
+### 1. Clone the repository
 
 ```bash
 sudo git clone https://github.com/AungKT99/rpi-toolkit.git
 cd rpi-toolkit
 ```
 
-### 2. Configure:
-
-Create a `config.json` file in the root directory:
+### 2. Create a configuration file
 
 ```bash
 nano config.json
 ```
 
-Add your configuration with your Telegram keys:
-
-- **telegram_bot_token**: Your BotFather token.
-- **telegram_chat_id**: Your user ID.
-- **services_to_monitor**: List of services (e.g., `["ssh", "docker"]`).
-- **schedules**: Set intervals (in minutes) or disable modules (`"enabled": false`).
-
-### Example config.json file
-
-You can control intervals and thresholds without touching the code.
+All settings are controlled from this single file:
 
 ```json
 {
   "telegram_bot_token": "YOUR_TOKEN_HERE",
-  "telegram_chat_id": "YOUR_ID_HERE",
+  "telegram_chat_id": "YOUR_CHAT_ID_HERE",
   "device_name": "Home RPI 5",
   "temp_threshold_celsius": 75.0,
   "disk_threshold_percent": 85,
@@ -77,34 +58,41 @@ You can control intervals and thresholds without touching the code.
     "enabled": true
   },
   "schedules": {
-    "temp_monitor": { "enabled": true, "interval_minutes": 10 },
-    "storage_watcher": { "enabled": true, "interval_minutes": 60 },
-    "service_watchdog": { "enabled": true, "interval_minutes": 5 }
+    "temp_monitor":     { "enabled": true, "interval_minutes": 10 },
+    "storage_watcher":  { "enabled": true, "interval_minutes": 60 },
+    "service_watchdog": { "enabled": true, "interval_minutes": 5  }
   }
 }
 ```
 
-### 3. Run the Installer:
+**Config fields:**
+| Key | Description |
+|---|---|
+| `telegram_bot_token` | Your bot token from BotFather |
+| `telegram_chat_id` | Your Telegram user ID |
+| `device_name` | Label shown in alert messages |
+| `temp_threshold_celsius` | Alert if CPU temp exceeds this value |
+| `disk_threshold_percent` | Alert if disk usage exceeds this percentage |
+| `services_to_monitor` | List of systemd services to watch |
+| `schedules` | Enable/disable each module and set its interval |
 
-This script installs dependencies, sets up the systemd boot service for IP notification, and writes the Cron jobs for monitoring.
+### 3. Run the installer
 
 ```bash
-# Make the script executable first
 chmod +x setup.sh
-
-# Run with root privileges
 sudo ./setup.sh
 ```
 
+This will install dependencies, register the IP Notifier as a systemd service, and set up cron jobs for the remaining monitors.
 
+> **Note:** If you update any settings in `config.json`, re-run `sudo ./setup.sh` to apply the changes.
 
-**Note**: If you change schedules or ip_notifier settings, run `sudo ./setup.sh` again to apply the changes to Cron/Systemd.
+---
 
 ## Logs
 
-All utilities log to a single file for easy debugging:
+All modules write to a single log file:
 
 ```bash
 tail -f /var/log/rpi-toolkit.log
 ```
-

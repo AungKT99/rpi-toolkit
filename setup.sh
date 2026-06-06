@@ -18,6 +18,15 @@ INSTALL_DIR=$(pwd)
 CONFIG_FILE="$INSTALL_DIR/config.json"
 echo "Installing from directory: $INSTALL_DIR"
 
+# 1b. Setup log file with correct permissions
+LOG_FILE="/var/log/rpi-toolkit.log"
+if [ ! -f "$LOG_FILE" ]; then
+    touch "$LOG_FILE"
+fi
+chmod 640 "$LOG_FILE"
+chown root:adm "$LOG_FILE"
+echo -e "${GREEN}Log file secured: $LOG_FILE${NC}"
+
 # 2. Install Python Dependencies
 echo -e "${GREEN}Installing Python requirements...${NC}"
 apt-get update -y
@@ -120,6 +129,12 @@ chmod +x $INSTALL_DIR/ip_notifier/ip_notifier.py
 chmod +x $INSTALL_DIR/temp_monitor/temp_monitor.py
 chmod +x $INSTALL_DIR/storage_watcher/storage_watcher.py
 chmod +x $INSTALL_DIR/service_watchdog/service_watchdog.py
+
+# 6. Install logrotate config
+LOGROTATE_DEST="/etc/logrotate.d/rpi-toolkit"
+cp "$INSTALL_DIR/rpi-toolkit.logrotate" "$LOGROTATE_DEST"
+chmod 644 "$LOGROTATE_DEST"
+echo -e "${GREEN}Logrotate config installed: $LOGROTATE_DEST${NC}"
 
 echo -e "${GREEN}Configuration Updated! 🚀${NC}"
 echo "Services and Cron jobs have been synced with config.json."
