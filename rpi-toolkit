@@ -323,9 +323,9 @@ config_containers() {
     OPTS=()
 
     # Section 1: Running Containers
-    OPTS+=("=== RUNNING CONTAINERS ===" "------------------" "OFF")
+    OPTS+=("header_running" "=== RUNNING CONTAINERS ===" "OFF")
     if [ -z "$RUNNING" ]; then
-        OPTS+=("(no running containers found)" " " "OFF")
+        OPTS+=("no_running" "  (no running containers found)" "OFF")
     else
         for ctr in $RUNNING; do
             STATE=OFF
@@ -342,7 +342,7 @@ config_containers() {
     fi
 
     # Section 2: Monitored Containers
-    OPTS+=("=== MONITORED CONTAINERS ===" "------------------" "OFF")
+    OPTS+=("header_monitored" "=== MONITORED CONTAINERS ===" "OFF")
     HAS_OFFLINE=false
     for mon in $MONITORED; do
         IS_RUNNING=false
@@ -358,7 +358,7 @@ config_containers() {
         fi
     done
     if [ "$HAS_OFFLINE" = false ]; then
-        OPTS+=("(no stopped containers monitored)" " " "OFF")
+        OPTS+=("no_monitored" "  (no stopped containers monitored)" "OFF")
     fi
 
     SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
@@ -370,10 +370,10 @@ config_containers() {
     eval set -- "$SELECTED"
     CLEAN=""
     for val in "$@"; do
-        if [ "$val" = "=== RUNNING CONTAINERS ===" ] || \
-           [ "$val" = "=== MONITORED CONTAINERS ===" ] || \
-           [ "$val" = "(no running containers found)" ] || \
-           [ "$val" = "(no stopped containers monitored)" ] || \
+        if [ "$val" = "header_running" ] || \
+           [ "$val" = "header_monitored" ] || \
+           [ "$val" = "no_running" ] || \
+           [ "$val" = "no_monitored" ] || \
            [ -z "$val" ]; then
             continue
         fi
