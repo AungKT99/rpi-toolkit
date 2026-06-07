@@ -51,7 +51,7 @@ EOF
 # ── Config read/write helpers ─────────────────────────────────────────────────
 cfg_read() {
     # Usage: cfg_read "['key']" or "['key']['subkey']"
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     d = json.load(f)
@@ -61,7 +61,7 @@ PYEOF
 }
 
 cfg_write_str() {
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     d = json.load(f)
@@ -72,7 +72,7 @@ PYEOF
 }
 
 cfg_write_num() {
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     d = json.load(f)
@@ -84,7 +84,7 @@ PYEOF
 
 cfg_write_bool() {
     # $1=key path  $2="true" or "false"
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     d = json.load(f)
@@ -96,7 +96,7 @@ PYEOF
 
 cfg_write_list() {
     # $1=key path  $2=space-separated values
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 items = [x for x in '$2'.split() if x]
 with open('$CONFIG_FILE') as f:
@@ -109,7 +109,7 @@ PYEOF
 
 cfg_read_list_str() {
     # Returns space-separated values from a JSON list
-    python3 - <<PYEOF 2>/dev/null
+    python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     d = json.load(f)
