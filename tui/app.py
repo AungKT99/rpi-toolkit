@@ -6,9 +6,9 @@ Entry point for the rpi-toolkit TUI.
 from __future__ import annotations
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer
 from textual.binding import Binding
 
+from tui.screens.menu import MainMenuScreen
 from tui.screens.dashboard import DashboardScreen
 from tui.screens.config import ConfigScreen
 
@@ -19,26 +19,18 @@ class RpiToolkitApp(App):
     TITLE = "rpi-toolkit"
     SUB_TITLE = "Raspberry Pi 5 Monitor"
 
-    CSS = """
-    Screen {
-        background: $background;
-    }
-    """
-
     BINDINGS = [
-        Binding("q",      "quit",              "Quit",    show=True),
-        Binding("c",      "push_screen('config')",   "⚙ Config", show=True),
-        Binding("d",      "push_screen('dashboard')", "📊 Dashboard", show=True),
+        Binding("q", "quit", "Quit", show=True),
     ]
 
     SCREENS = {
+        "menu":      MainMenuScreen,
         "dashboard": DashboardScreen,
         "config":    ConfigScreen,
     }
 
     def on_mount(self) -> None:
-        # Start on the dashboard
-        self.push_screen("dashboard")
+        self.push_screen("menu")
 
 
 def main():

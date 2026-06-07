@@ -133,9 +133,8 @@ class DashboardScreen(Screen):
     """Full-screen live dashboard."""
 
     BINDINGS = [
-        ("c", "app.push_screen('config')", "⚙ Config"),
-        ("q", "app.quit", "Quit"),
-        ("r", "refresh_now", "Refresh"),
+        ("escape", "app.pop_screen", "◀ Back"),
+        ("r",      "refresh_now",    "Refresh"),
     ]
 
     DEFAULT_CSS = """

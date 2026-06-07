@@ -89,7 +89,7 @@ class ConfigScreen(Screen):
 
     BINDINGS = [
         ("escape", "app.pop_screen", "◀ Back"),
-        ("ctrl+s", "save_config",   "Save"),
+        ("ctrl+s",  "save_config",   "Save"),
     ]
 
     DEFAULT_CSS = """
@@ -124,10 +124,6 @@ class ConfigScreen(Screen):
     Button {
         margin: 0 1;
     }
-
-    #save-btn   { variant: success; }
-    #apply-btn  { variant: primary; }
-    #cancel-btn { variant: default; }
 
     .services-list {
         border: round $panel;
