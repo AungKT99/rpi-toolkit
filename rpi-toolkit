@@ -308,20 +308,20 @@ config_services() {
 # ── Config: Docker Containers ─────────────────────────────────────────────────
 # Helper functions for docker configuration using Python directly for robust parsing
 read_monitored_containers() {
-    python3 - "$CONFIG_FILE" <<'PYEOF' 2>/dev/null
+    python3 - "$CONFIG_FILE" <<'PYEOF'
 import sys
 import json
 try:
     with open(sys.argv[1], 'r') as f:
         config = json.load(f)
     print(' '.join(config.get('containers_to_monitor', [])))
-except Exception:
-    pass
+except Exception as e:
+    sys.stderr.write(f"READ ERROR: {e}\n")
 PYEOF
 }
 
 save_monitored_containers() {
-    python3 - "$CONFIG_FILE" "$1" <<'PYEOF' 2>/dev/null
+    python3 - "$CONFIG_FILE" "$1" <<'PYEOF'
 import sys
 import json
 import shlex
@@ -331,7 +331,8 @@ raw_selected = sys.argv[2]
 
 try:
     selected_list = shlex.split(raw_selected)
-except Exception:
+except Exception as e:
+    sys.stderr.write(f"PARSE ERROR: {e}\n")
     selected_list = []
 
 ignored_tags = {"header_running", "header_monitored", "no_running", "no_monitored"}
@@ -343,8 +344,8 @@ try:
     config['containers_to_monitor'] = cleaned_list
     with open(config_file, 'w') as f:
         json.dump(config, f, indent=2)
-except Exception:
-    pass
+except Exception as e:
+    sys.stderr.write(f"SAVE ERROR: {e}\n")
 PYEOF
 }
 
