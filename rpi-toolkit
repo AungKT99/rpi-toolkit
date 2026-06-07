@@ -366,10 +366,9 @@ config_containers() {
         "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
 
-    # Parse selected items safely (handles spaces inside quotes returned by whiptail)
-    eval set -- "$SELECTED"
+    # Strip double quotes whiptail adds and parse space-separated items
     CLEAN=""
-    for val in "$@"; do
+    for val in $(echo "$SELECTED" | tr -d '"'); do
         if [ "$val" = "header_running" ] || \
            [ "$val" = "header_monitored" ] || \
            [ "$val" = "no_running" ] || \
@@ -405,7 +404,22 @@ Proceed?" 14 $W || return
 
     # 2. Cron helper functions
     cron_time() {
-        [ "$1" -eq 60 ] && echo "0 * * * *" || echo "*/$1 * * * *"
+        local mins=$1
+        if [ "$mins" -lt 60 ]; then
+            echo "*/$mins * * * *"
+        elif [ $((mins % 60)) -eq 0 ]; then
+            local hours=$((mins / 60))
+            if [ $hours -lt 24 ]; then
+                echo "0 */$hours * * *"
+            elif [ $((hours % 24)) -eq 0 ]; then
+                local days=$((hours / 24))
+                echo "0 0 */$days * *"
+            else
+                echo "0 */$hours * * *"
+            fi
+        else
+            echo "0 * * * *"
+        fi
     }
 
     upsert_cron() {
