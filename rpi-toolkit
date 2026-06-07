@@ -405,7 +405,7 @@ config_containers() {
     fi
 
     SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
-        --checklist "Select containers to monitor:" 20 $W 10 \
+        --checklist "Select containers to monitor:\n\n[Spacebar = Select/Deselect, Enter = Confirm]" 20 $W 10 \
         "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
 
