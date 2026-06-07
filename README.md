@@ -1,9 +1,9 @@
 # rpi-toolkit
 
 A collection of lightweight background utilities to monitor the health of a Raspberry Pi 5.
-Each module runs independently and sends alerts via Telegram — no need to SSH in just to check if everything is okay.
+Configured and managed through an interactive terminal menu — no manual JSON editing needed.
 
-Configured and managed through an interactive terminal UI (TUI).
+Alerts are sent via Telegram when something needs your attention.
 
 ---
 
@@ -18,20 +18,15 @@ Configured and managed through an interactive terminal UI (TUI).
 
 ## Features
 
-### 📊 Live Dashboard
-Real-time view of CPU temperature, disk usage, and the status of all monitored services — auto-refreshes every 5 seconds inside the TUI.
-
-### 📡 IP Notifier
-Sends the Pi's current IP address to Telegram whenever it boots or connects to a network. Useful for headless setups where the IP can change after a reboot.
-
 ### 🌡 Temperature Monitor
 Reads the CPU temperature at regular intervals. Sends an alert if it exceeds a configurable threshold (default: 75°C).
 
 ### 💾 Storage Watcher
 Monitors disk usage on the root partition `/`. Sends a warning before the disk fills up so you have time to act.
 
-### 🛡 Service Watchdog
-Checks that critical services (e.g. SSH, Docker, Cron) are running. If a service is down, it attempts an automatic restart and notifies you of the outcome.
+### 🛡 Service & Container Watchdog
+Checks that critical **systemd services** (e.g. SSH, Cron) and **Docker containers** are running.
+If something is down, it attempts an automatic restart and notifies you of the outcome.
 
 ---
 
@@ -40,20 +35,24 @@ Checks that critical services (e.g. SSH, Docker, Cron) are running. If a service
 ### 1. Clone the repository
 
 ```bash
-sudo git clone https://github.com/AungKT99/rpi-toolkit.git
+git clone https://github.com/AungKT99/rpi-toolkit.git
 cd rpi-toolkit
 ```
 
-### 2. Install uv
+### 2. Create your `.env` file
+
+Telegram credentials are stored in a `.env` file — never committed to git.
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+cp .env.example .env
+nano .env
 ```
 
-Then make `uv` available to `sudo`:
+Fill in your values:
 
-```bash
-sudo ln -s ~/.local/bin/uv /usr/local/bin/uv
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
 ```
 
 ### 3. Launch the TUI
@@ -62,57 +61,50 @@ sudo ln -s ~/.local/bin/uv /usr/local/bin/uv
 sudo ./rpi-toolkit
 ```
 
-> **Note:** `sudo` is required so the installer can configure systemd services and cron jobs.
-> On first run, `uv` automatically resolves and installs all Python dependencies.
+> **Note:** `sudo` is required to configure cron jobs and system permissions.
 
 ---
 
-## Using the TUI
+## Using the Menu
 
-The TUI opens directly on the **Live Dashboard**. Use the keyboard to navigate:
+Navigate with **arrow keys**, select with **Enter**, cancel/back with **Escape**.
 
-| Key | Action |
-|-----|--------|
-| `C` | Open Config editor |
-| `D` | Return to Dashboard |
-| `R` | Force-refresh dashboard |
-| `Q` | Quit |
-| `Ctrl+S` | Save config (inside Config screen) |
-| `Esc` | Go back |
+```
+Main Menu
+├── Dashboard          — live CPU temp, disk usage, service & container states
+├── Configuration
+│   ├── Device Name & Alert Thresholds
+│   ├── Module Schedules
+│   ├── Systemd Services to Monitor
+│   ├── Docker Containers to Monitor
+│   └── Apply & Install
+└── Exit
+```
 
-### ⚙ Config Screen Tabs
-
-| Tab | What you can do |
-|-----|----------------|
-| **General** | Set Telegram token, chat ID, device name, and alert thresholds |
-| **Modules** | Enable/disable each module and set its check interval |
-| **Services** | Add or remove services for the watchdog to monitor |
-| **Apply** | Save config and run the installer — sets up cron jobs, systemd service, and logrotate |
-
-> If you update any settings, go to the **Apply** tab and hit **Save & Apply** to sync changes.
+Go to **Configuration → Apply & Install** after making any changes to sync cron jobs and permissions.
 
 ---
 
 ## Config Fields Reference
 
-All settings are stored in `config.json` at the project root (created/managed by the TUI):
+Settings are stored in `config.json` (managed by the menu):
 
 | Key | Description |
 |-----|-------------|
-| `telegram_bot_token` | Your bot token from BotFather |
-| `telegram_chat_id` | Your Telegram user ID |
-| `device_name` | Label shown in alert messages |
+| `device_name` | Label shown in Telegram alert messages |
 | `temp_threshold_celsius` | Alert if CPU temp exceeds this value |
 | `disk_threshold_percent` | Alert if disk usage exceeds this percentage |
-| `services_to_monitor` | List of systemd services to watch |
-| `ip_notifier.enabled` | Enable/disable boot IP notification |
-| `schedules` | Per-module enable flag and interval in minutes |
+| `services_to_monitor` | Systemd services the watchdog checks |
+| `containers_to_monitor` | Docker container names the watchdog checks |
+| `schedules` | Per-module enable flag and check interval in minutes |
+
+Telegram credentials (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in `.env` — not in `config.json`.
 
 ---
 
 ## Logs
 
-All modules write to a single log file, managed automatically by logrotate (weekly, 4 weeks retained):
+All modules write to a single log file, rotated weekly (4 weeks retained):
 
 ```bash
 tail -f /var/log/rpi-toolkit.log

@@ -1,66 +1,565 @@
-#!/usr/bin/env python3
-"""
-rpi-toolkit — single entrypoint.
+#!/bin/bash
+# rpi-toolkit — Interactive setup and monitoring script
+# Uses whiptail (pre-installed on Ubuntu / Raspberry Pi OS)
 
-Usage:
-    sudo ./rpi-toolkit
+# ── Constants ─────────────────────────────────────────────────────────────────
+INSTALL_DIR=$(dirname "$(readlink -f "$0")")
+CONFIG_FILE="$INSTALL_DIR/config.json"
+LOG_FILE="/var/log/rpi-toolkit.log"
+SERVICE_SRC="$INSTALL_DIR/ip_notifier/ip_notifier.service"
+SERVICE_DEST="/etc/systemd/system/ip_notifier.service"
+LOGROTATE_SRC="$INSTALL_DIR/rpi-toolkit.logrotate"
+LOGROTATE_DEST="/etc/logrotate.d/rpi-toolkit"
 
-Requires uv to be installed:
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    sudo ln -s ~/.local/bin/uv /usr/local/bin/uv   # make available to sudo
-"""
+TITLE="rpi-toolkit"
+W=64   # dialog width
+H=20   # dialog height
 
-import os
+# ── Root check ────────────────────────────────────────────────────────────────
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root:  sudo ./rpi-toolkit"
+    exit 1
+fi
+
+# ── whiptail check ────────────────────────────────────────────────────────────
+if ! command -v whiptail &>/dev/null; then
+    echo "Installing whiptail..."
+    apt-get install -y whiptail
+fi
+
+# ── Default config ────────────────────────────────────────────────────────────
+init_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        cat > "$CONFIG_FILE" << 'EOF'
+{
+  "device_name": "Home RPI 5",
+  "temp_threshold_celsius": 75.0,
+  "disk_threshold_percent": 85,
+  "services_to_monitor": ["ssh", "cron"],
+  "containers_to_monitor": [],
+  "schedules": {
+    "temp_monitor":     { "enabled": true, "interval_minutes": 10 },
+    "storage_watcher":  { "enabled": true, "interval_minutes": 60 },
+    "service_watchdog": { "enabled": true, "interval_minutes": 5  }
+  }
+}
+EOF
+        echo "Created default config.json"
+    fi
+}
+
+# ── Config read/write helpers ─────────────────────────────────────────────────
+cfg_read() {
+    # Usage: cfg_read "['key']" or "['key']['subkey']"
+    python3 - <<PYEOF
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+val = d$1
+print(val if not isinstance(val, bool) else str(val).lower())
+PYEOF
+}
+
+cfg_write_str() {
+    python3 - <<PYEOF
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+d$1 = """$2"""
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+PYEOF
+}
+
+cfg_write_num() {
+    python3 - <<PYEOF
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+d$1 = $2
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+PYEOF
+}
+
+cfg_write_bool() {
+    # $1=key path  $2="true" or "false"
+    python3 - <<PYEOF
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+d$1 = True if '$2' == 'true' else False
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+PYEOF
+}
+
+cfg_write_list() {
+    # $1=key path  $2=space-separated values
+    python3 - <<PYEOF
+import json
+items = [x for x in '$2'.split() if x]
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+d$1 = items
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+PYEOF
+}
+
+cfg_read_list_str() {
+    # Returns space-separated values from a JSON list
+    python3 - <<PYEOF
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+print(' '.join(d$1))
+PYEOF
+}
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+show_dashboard() {
+    DEVICE=$(cfg_read "['device_name']")
+
+    # CPU Temperature
+    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        TEMP=$(awk '{printf "%.1f C", $1/1000}' /sys/class/thermal/thermal_zone0/temp)
+        TEMP_THRESH=$(cfg_read "['temp_threshold_celsius']")
+        TEMP_VAL=$(awk '{printf "%.1f", $1/1000}' /sys/class/thermal/thermal_zone0/temp)
+        if awk "BEGIN{exit !($TEMP_VAL > $TEMP_THRESH)}"; then
+            TEMP="$TEMP  [!] ABOVE THRESHOLD"
+        fi
+    else
+        TEMP="N/A"
+    fi
+
+    # Disk Usage
+    DISK=$(df -h / | awk 'NR==2 {printf "%s used  (%s / %s)", $5, $3, $2}')
+    DISK_PCT=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+    DISK_THRESH=$(cfg_read "['disk_threshold_percent']")
+    if [ "$DISK_PCT" -gt "$DISK_THRESH" ] 2>/dev/null; then
+        DISK="$DISK  [!] ABOVE THRESHOLD"
+    fi
+
+    # Systemd Services
+    SVCS=$(cfg_read_list_str "['services_to_monitor']")
+    SVC_LINES=""
+    for svc in $SVCS; do
+        STATE=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
+        [ "$STATE" = "active" ] && ICON="[OK]" || ICON="[!!]"
+        SVC_LINES="$SVC_LINES\n  $ICON $svc ($STATE)"
+    done
+    [ -z "$SVCS" ] && SVC_LINES="\n  (none configured)"
+
+    # Docker Containers
+    CTRS=$(cfg_read_list_str "['containers_to_monitor']")
+    CTR_LINES=""
+    for ctr in $CTRS; do
+        if command -v docker &>/dev/null; then
+            RUNNING=$(docker inspect --format='{{.State.Running}}' "$ctr" 2>/dev/null)
+            [ "$RUNNING" = "true" ] && ICON="[OK]" || ICON="[!!]"
+            CTR_LINES="$CTR_LINES\n  $ICON $ctr"
+        else
+            CTR_LINES="$CTR_LINES\n  [??] $ctr (docker not found)"
+        fi
+    done
+    [ -z "$CTRS" ] && CTR_LINES="\n  (none configured)"
+
+    whiptail --title "$TITLE — Dashboard" --msgbox \
+"Device : $DEVICE
+Time   : $(date '+%Y-%m-%d  %H:%M:%S')
+
+CPU Temp : $TEMP
+Disk (/) : $DISK
+
+Services:$(echo -e "$SVC_LINES")
+
+Containers:$(echo -e "$CTR_LINES")
+
+Press OK to return." \
+    26 $W
+}
+
+# ── Config: Device & Thresholds ───────────────────────────────────────────────
+config_device() {
+    DEVICE=$(cfg_read "['device_name']")
+    NEW_DEVICE=$(whiptail --title "$TITLE — Device Name" \
+        --inputbox "Device label shown in Telegram alerts:" \
+        10 $W "$DEVICE" 3>&1 1>&2 2>&3) || return
+    cfg_write_str "['device_name']" "$NEW_DEVICE"
+
+    TEMP_T=$(cfg_read "['temp_threshold_celsius']")
+    NEW_TEMP=$(whiptail --title "$TITLE — Temperature Threshold" \
+        --inputbox "Alert if CPU temperature exceeds (°C):" \
+        10 $W "$TEMP_T" 3>&1 1>&2 2>&3) || return
+    cfg_write_num "['temp_threshold_celsius']" "$NEW_TEMP"
+
+    DISK_T=$(cfg_read "['disk_threshold_percent']")
+    NEW_DISK=$(whiptail --title "$TITLE — Disk Threshold" \
+        --inputbox "Alert if disk usage exceeds (%):" \
+        10 $W "$DISK_T" 3>&1 1>&2 2>&3) || return
+    cfg_write_num "['disk_threshold_percent']" "$NEW_DISK"
+
+    whiptail --title "$TITLE" --msgbox "Settings saved." 8 40
+}
+
+# ── Config: Module Schedules ──────────────────────────────────────────────────
+config_modules() {
+    while true; do
+        TM_EN=$(cfg_read "['schedules']['temp_monitor']['enabled']")
+        TM_INT=$(cfg_read "['schedules']['temp_monitor']['interval_minutes']")
+        SW_EN=$(cfg_read "['schedules']['storage_watcher']['enabled']")
+        SW_INT=$(cfg_read "['schedules']['storage_watcher']['interval_minutes']")
+        WD_EN=$(cfg_read "['schedules']['service_watchdog']['enabled']")
+        WD_INT=$(cfg_read "['schedules']['service_watchdog']['interval_minutes']")
+
+        [ "$TM_EN" = "true" ] && TM_S="ON  (every ${TM_INT}min)" || TM_S="OFF"
+        [ "$SW_EN" = "true" ] && SW_S="ON  (every ${SW_INT}min)" || SW_S="OFF"
+        [ "$WD_EN" = "true" ] && WD_S="ON  (every ${WD_INT}min)" || WD_S="OFF"
+
+        CHOICE=$(whiptail --title "$TITLE — Module Schedules" \
+            --menu "Select a module to configure:" 16 $W 4 \
+            "1" "Temperature Monitor   [$TM_S]" \
+            "2" "Storage Watcher       [$SW_S]" \
+            "3" "Service & Container Watchdog  [$WD_S]" \
+            "4" "Back" \
+            3>&1 1>&2 2>&3) || break
+
+        case $CHOICE in
+            1)
+                if whiptail --title "$TITLE — Temperature Monitor" \
+                    --yesno "Enable Temperature Monitor?" 10 $W; then
+                    cfg_write_bool "['schedules']['temp_monitor']['enabled']" "true"
+                    NEW_INT=$(whiptail --title "$TITLE — Temperature Monitor" \
+                        --inputbox "Check interval (minutes):" 10 $W "$TM_INT" \
+                        3>&1 1>&2 2>&3) && cfg_write_num "['schedules']['temp_monitor']['interval_minutes']" "$NEW_INT"
+                else
+                    cfg_write_bool "['schedules']['temp_monitor']['enabled']" "false"
+                fi
+                ;;
+            2)
+                if whiptail --title "$TITLE — Storage Watcher" \
+                    --yesno "Enable Storage Watcher?" 10 $W; then
+                    cfg_write_bool "['schedules']['storage_watcher']['enabled']" "true"
+                    NEW_INT=$(whiptail --title "$TITLE — Storage Watcher" \
+                        --inputbox "Check interval (minutes):" 10 $W "$SW_INT" \
+                        3>&1 1>&2 2>&3) && cfg_write_num "['schedules']['storage_watcher']['interval_minutes']" "$NEW_INT"
+                else
+                    cfg_write_bool "['schedules']['storage_watcher']['enabled']" "false"
+                fi
+                ;;
+            3)
+                if whiptail --title "$TITLE — Service Watchdog" \
+                    --yesno "Enable Service & Container Watchdog?" 10 $W; then
+                    cfg_write_bool "['schedules']['service_watchdog']['enabled']" "true"
+                    NEW_INT=$(whiptail --title "$TITLE — Service Watchdog" \
+                        --inputbox "Check interval (minutes):" 10 $W "$WD_INT" \
+                        3>&1 1>&2 2>&3) && cfg_write_num "['schedules']['service_watchdog']['interval_minutes']" "$NEW_INT"
+                else
+                    cfg_write_bool "['schedules']['service_watchdog']['enabled']" "false"
+                fi
+                ;;
+            4) break ;;
+        esac
+    done
+}
+
+# ── Config: Systemd Services ──────────────────────────────────────────────────
+config_services() {
+    while true; do
+        CURRENT=$(cfg_read_list_str "['services_to_monitor']")
+        [ -z "$CURRENT" ] && DISPLAY="(none)" || DISPLAY="$CURRENT"
+
+        CHOICE=$(whiptail --title "$TITLE — Systemd Services" \
+            --menu "Current: $DISPLAY" 14 $W 3 \
+            "1" "Add a service" \
+            "2" "Remove a service" \
+            "3" "Back" \
+            3>&1 1>&2 2>&3) || break
+
+        case $CHOICE in
+            1)
+                NEW=$(whiptail --title "$TITLE — Add Service" \
+                    --inputbox "Service name:" 8 $W "" \
+                    3>&1 1>&2 2>&3) || continue
+                [ -z "$NEW" ] && continue
+                UPDATED="$CURRENT $NEW"
+                cfg_write_list "['services_to_monitor']" "$UPDATED"
+                ;;
+            2)
+                if [ -z "$CURRENT" ]; then
+                    whiptail --title "$TITLE" --msgbox "No services to remove." 8 40
+                    continue
+                fi
+                OPTS=()
+                for s in $CURRENT; do OPTS+=("$s" "" OFF); done
+                REMOVE=$(whiptail --title "$TITLE — Remove Service" \
+                    --radiolist "Select service to remove:" 16 $W 8 \
+                    "${OPTS[@]}" \
+                    3>&1 1>&2 2>&3) || continue
+                UPDATED=$(echo "$CURRENT" | tr ' ' '\n' | grep -v "^${REMOVE}$" | tr '\n' ' ')
+                cfg_write_list "['services_to_monitor']" "$UPDATED"
+                ;;
+            3) break ;;
+        esac
+    done
+}
+
+# ── Config: Docker Containers ─────────────────────────────────────────────────
+# Helper functions for docker configuration using Python directly for robust parsing
+read_monitored_containers() {
+    python3 - "$CONFIG_FILE" <<'PYEOF'
 import sys
-import shutil
+import json
+try:
+    with open(sys.argv[1], 'r') as f:
+        config = json.load(f)
+    print(' '.join(config.get('containers_to_monitor', [])))
+except Exception as e:
+    sys.stderr.write(f"READ ERROR: {e}\n")
+PYEOF
+}
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+save_monitored_containers() {
+    python3 - "$CONFIG_FILE" "$1" <<'PYEOF'
+import sys
+import json
+import shlex
 
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+config_file = sys.argv[1]
+raw_selected = sys.argv[2]
 
+try:
+    selected_list = shlex.split(raw_selected)
+except Exception as e:
+    sys.stderr.write(f"PARSE ERROR: {e}\n")
+    selected_list = []
 
-def _find_uv() -> str | None:
-    """Search common locations for the uv binary."""
-    candidates = [
-        shutil.which("uv"),
-        "/usr/local/bin/uv",
-        "/root/.local/bin/uv",
-        os.path.expanduser("~/.local/bin/uv"),
-    ]
-    for path in candidates:
-        if path and os.path.isfile(path):
-            return path
-    return None
+ignored_tags = {"header_running", "header_monitored", "no_running", "no_monitored"}
+cleaned_list = [tag for tag in selected_list if tag not in ignored_tags and tag.strip()]
 
+try:
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    config['containers_to_monitor'] = cleaned_list
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+except Exception as e:
+    sys.stderr.write(f"SAVE ERROR: {e}\n")
+PYEOF
+}
 
-def _managed_by_uv() -> bool:
-    """True if we are already running inside a uv-managed environment."""
-    return (
-        "UV_PROJECT_ENVIRONMENT" in os.environ
-        or os.environ.get("VIRTUAL_ENV", "").startswith(PROJECT_ROOT)
-    )
+config_containers() {
+    if ! command -v docker &>/dev/null; then
+        whiptail --title "$TITLE" --msgbox "Docker is not installed on this system." 8 $W
+        return
+    fi
 
+    # Get all running containers from docker ps
+    RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null)
 
-if __name__ == "__main__":
-    if not _managed_by_uv():
-        uv = _find_uv()
+    # Get currently monitored containers to pre-tick them
+    MONITORED=$(read_monitored_containers)
 
-        if not uv:
-            print("Error: uv is not installed.")
-            print()
-            print("Install it with:")
-            print("  curl -LsSf https://astral.sh/uv/install.sh | sh")
-            print()
-            print("Then make it available to sudo:")
-            print("  sudo ln -s ~/.local/bin/uv /usr/local/bin/uv")
-            print()
-            print("Then re-run:  sudo ./rpi-toolkit")
-            sys.exit(1)
+    # Build checklist: tag  item  status
+    # We display running containers in one section, and offline monitored containers in another.
+    OPTS=()
 
-        # Re-exec this script under uv — it will resolve deps automatically
-        os.execv(uv, [uv, "run", "--project", PROJECT_ROOT, sys.argv[0]] + sys.argv[1:])
+    # Section 1: Running Containers
+    OPTS+=("header_running" "=== RUNNING CONTAINERS ===" "OFF")
+    if [ -z "$RUNNING" ]; then
+        OPTS+=("no_running" "  (no running containers found)" "OFF")
+    else
+        for ctr in $RUNNING; do
+            STATE=OFF
+            DESC="[Running / Not Monitored]"
+            for mon in $MONITORED; do
+                if [ "$ctr" = "$mon" ]; then
+                    STATE=ON
+                    DESC="[Running / Monitored]"
+                    break
+                fi
+            done
+            OPTS+=("$ctr" "$DESC" "$STATE")
+        done
+    fi
 
-    # Running inside uv-managed env — launch the TUI
-    from tui.app import main
-    main()
+    # Section 2: Monitored Containers
+    OPTS+=("header_monitored" "=== MONITORED CONTAINERS ===" "OFF")
+    HAS_OFFLINE=false
+    for mon in $MONITORED; do
+        IS_RUNNING=false
+        for ctr in $RUNNING; do
+            if [ "$mon" = "$ctr" ]; then
+                IS_RUNNING=true
+                break
+            fi
+        done
+        if [ "$IS_RUNNING" = false ]; then
+            OPTS+=("$mon" "[Monitored / Stopped]" "ON")
+            HAS_OFFLINE=true
+        fi
+    done
+    if [ "$HAS_OFFLINE" = false ]; then
+        OPTS+=("no_monitored" "  (no stopped containers monitored)" "OFF")
+    fi
+
+    SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
+        --checklist "Select containers to monitor:\n\n[Spacebar = Select/Deselect, Enter = Confirm]" 20 $W 10 \
+        "${OPTS[@]}" \
+        3>&1 1>&2 2>&3) || return
+
+    save_monitored_containers "$SELECTED"
+    whiptail --title "$TITLE" --msgbox "Containers saved." 8 40
+}
+
+# ── Apply & Install ───────────────────────────────────────────────────────────
+apply_install() {
+    whiptail --title "$TITLE — Apply" --yesno \
+"This will apply all settings:
+
+  • Set up cron jobs for enabled modules
+  • Install logrotate config
+  • Set file permissions
+
+Proceed?" 14 $W || return
+
+    LOG=""
+
+    # 1. Log file
+    if [ ! -f "$LOG_FILE" ]; then touch "$LOG_FILE"; fi
+    chmod 640 "$LOG_FILE"
+    chown root:adm "$LOG_FILE" 2>/dev/null || true
+    LOG="$LOG\n[OK] Log file secured"
+
+    # 2. Cron helper functions
+    cron_time() {
+        local mins=$1
+        if [ "$mins" -lt 60 ]; then
+            echo "*/$mins * * * *"
+        elif [ $((mins % 60)) -eq 0 ]; then
+            local hours=$((mins / 60))
+            if [ $hours -lt 24 ]; then
+                echo "0 */$hours * * *"
+            elif [ $((hours % 24)) -eq 0 ]; then
+                local days=$((hours / 24))
+                echo "0 0 */$days * *"
+            else
+                echo "0 */$hours * * *"
+            fi
+        else
+            echo "0 * * * *"
+        fi
+    }
+
+    upsert_cron() {
+        local SCRIPT="$1" TIME="$2" PATH_="$3"
+        local JOB="$TIME /usr/bin/python3 $PATH_ >> $LOG_FILE 2>&1"
+        (crontab -l 2>/dev/null | grep -v "$SCRIPT"; echo "$JOB") | crontab -
+    }
+
+    remove_cron() {
+        crontab -l 2>/dev/null | grep -v "$1" | crontab -
+    }
+
+    # 3. Temperature Monitor cron
+    TM_EN=$(cfg_read "['schedules']['temp_monitor']['enabled']")
+    TM_INT=$(cfg_read "['schedules']['temp_monitor']['interval_minutes']")
+    if [ "$TM_EN" = "true" ]; then
+        upsert_cron "temp_monitor.py" "$(cron_time $TM_INT)" "$INSTALL_DIR/temp_monitor/temp_monitor.py"
+        LOG="$LOG\n[OK] Temperature Monitor: every ${TM_INT}min"
+    else
+        remove_cron "temp_monitor.py"
+        LOG="$LOG\n[--] Temperature Monitor: disabled"
+    fi
+
+    # 4. Storage Watcher cron
+    SW_EN=$(cfg_read "['schedules']['storage_watcher']['enabled']")
+    SW_INT=$(cfg_read "['schedules']['storage_watcher']['interval_minutes']")
+    if [ "$SW_EN" = "true" ]; then
+        upsert_cron "storage_watcher.py" "$(cron_time $SW_INT)" "$INSTALL_DIR/storage_watcher/storage_watcher.py"
+        LOG="$LOG\n[OK] Storage Watcher: every ${SW_INT}min"
+    else
+        remove_cron "storage_watcher.py"
+        LOG="$LOG\n[--] Storage Watcher: disabled"
+    fi
+
+    # 5. Service Watchdog cron
+    WD_EN=$(cfg_read "['schedules']['service_watchdog']['enabled']")
+    WD_INT=$(cfg_read "['schedules']['service_watchdog']['interval_minutes']")
+    if [ "$WD_EN" = "true" ]; then
+        upsert_cron "service_watchdog.py" "$(cron_time $WD_INT)" "$INSTALL_DIR/service_watchdog/service_watchdog.py"
+        LOG="$LOG\n[OK] Service Watchdog: every ${WD_INT}min"
+    else
+        remove_cron "service_watchdog.py"
+        LOG="$LOG\n[--] Service Watchdog: disabled"
+    fi
+
+    # 6. Permissions
+    chmod +x "$INSTALL_DIR/rpi-toolkit"
+    chmod +x "$INSTALL_DIR/temp_monitor/temp_monitor.py"
+    chmod +x "$INSTALL_DIR/storage_watcher/storage_watcher.py"
+    chmod +x "$INSTALL_DIR/service_watchdog/service_watchdog.py"
+    LOG="$LOG\n[OK] Permissions set"
+
+    # 7. Logrotate
+    if [ -f "$LOGROTATE_SRC" ]; then
+        cp "$LOGROTATE_SRC" "$LOGROTATE_DEST"
+        chmod 644 "$LOGROTATE_DEST"
+        LOG="$LOG\n[OK] Logrotate installed"
+    fi
+
+    whiptail --title "$TITLE — Done" --msgbox \
+"Installation complete!
+
+$(echo -e "$LOG")" \
+    22 $W
+}
+
+# ── Configuration Menu ────────────────────────────────────────────────────────
+config_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "$TITLE — Configuration" \
+            --menu "Choose a setting to configure:" 18 $W 6 \
+            "1" "Device Name & Alert Thresholds" \
+            "2" "Module Schedules" \
+            "3" "Systemd Services to Monitor" \
+            "4" "Docker Containers to Monitor" \
+            "5" "Apply & Install" \
+            "6" "Back" \
+            3>&1 1>&2 2>&3) || break
+
+        case $CHOICE in
+            1) config_device     ;;
+            2) config_modules    ;;
+            3) config_services   ;;
+            4) config_containers ;;
+            5) apply_install     ;;
+            6) break             ;;
+        esac
+    done
+}
+
+# ── Main Menu ─────────────────────────────────────────────────────────────────
+main_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "$TITLE" \
+            --menu "Raspberry Pi 5 — Monitor & Config" 14 $W 3 \
+            "1" "Dashboard" \
+            "2" "Configuration" \
+            "3" "Exit" \
+            3>&1 1>&2 2>&3) || break
+
+        case $CHOICE in
+            1) show_dashboard ;;
+            2) config_menu   ;;
+            3) break          ;;
+        esac
+    done
+}
+
+# ── Entry ─────────────────────────────────────────────────────────────────────
+init_config
+main_menu
+clear
+echo "rpi-toolkit — done."
