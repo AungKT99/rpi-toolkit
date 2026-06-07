@@ -47,7 +47,7 @@ cd rpi-toolkit
 ### 2. Install dependencies
 
 ```bash
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt --break-system-packages
 ```
 
 ### 3. Launch the TUI
