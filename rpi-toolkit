@@ -323,13 +323,17 @@ config_containers() {
     MONITORED=$(cfg_read_list_str "['containers_to_monitor']")
 
     # Build checklist: name  description  ON/OFF
+    # Use exact match loop — grep -qw breaks on hyphenated names
     OPTS=()
     for ctr in $RUNNING; do
-        if echo " $MONITORED " | grep -qw "$ctr"; then
-            OPTS+=("$ctr" "" ON)
-        else
-            OPTS+=("$ctr" "" OFF)
-        fi
+        STATE=OFF
+        for mon in $MONITORED; do
+            if [ "$ctr" = "$mon" ]; then
+                STATE=ON
+                break
+            fi
+        done
+        OPTS+=("$ctr" "" $STATE)
     done
 
     SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
