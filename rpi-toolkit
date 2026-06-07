@@ -29,13 +29,13 @@ def _check_textual():
             import subprocess
             try:
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "textual",
+                    [sys.executable, "-m", "pip", "install", "textual", "requests",
                      "--break-system-packages"],
                     check=True,
                 )
             except subprocess.CalledProcessError:
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "textual"],
+                    [sys.executable, "-m", "pip", "install", "textual", "requests"],
                     check=True,
                 )
         else:

@@ -56,9 +56,12 @@ def install_dependencies():
     _run(["apt-get", "install", "-y", "python3-pip", "python3-requests"])
     yield "Installing textual and requests via pip…"
     try:
-        _run(["pip3", "install", "textual", "requests", "--break-system-packages"])
+        _run(["pip3", "install", "-r",
+              os.path.join(INSTALL_DIR, "requirements.txt"),
+              "--break-system-packages"])
     except subprocess.CalledProcessError:
-        _run(["pip3", "install", "textual", "requests"])
+        _run(["pip3", "install", "-r",
+              os.path.join(INSTALL_DIR, "requirements.txt")])
     yield "Dependencies installed."
 
 
