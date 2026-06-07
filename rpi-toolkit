@@ -318,12 +318,6 @@ config_containers() {
     # Get currently monitored containers to pre-tick them
     MONITORED=$(cfg_read_list_str "['containers_to_monitor']")
 
-    # If nothing is running and nothing is monitored, notify user
-    if [ -z "$RUNNING" ] && [ -z "$MONITORED" ]; then
-        whiptail --title "$TITLE" --msgbox "No running or monitored containers found.\nStart your containers first, then come back." 10 $W
-        return
-    fi
-
     # Build checklist: tag  item  status
     # We display running containers in one section, and offline monitored containers in another.
     OPTS=()
@@ -372,10 +366,10 @@ config_containers() {
         "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
 
-    # Remove quotes whiptail adds around names and filter out section headers/placeholders
+    # Parse selected items safely (handles spaces inside quotes returned by whiptail)
+    eval set -- "$SELECTED"
     CLEAN=""
-    for item in $SELECTED; do
-        val=$(echo "$item" | tr -d '"')
+    for val in "$@"; do
         if [ "$val" = "=== RUNNING CONTAINERS ===" ] || \
            [ "$val" = "=== MONITORED CONTAINERS ===" ] || \
            [ "$val" = "(no running containers found)" ] || \
