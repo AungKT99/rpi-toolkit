@@ -166,21 +166,18 @@ show_dashboard() {
     [ -z "$CTRS" ] && CTR_LINES="\n  (none configured)"
 
     whiptail --title "$TITLE — Dashboard" --msgbox \
-"Device: $DEVICE
-$(date '+%Y-%m-%d  %H:%M:%S')
+"Device : $DEVICE
+Time   : $(date '+%Y-%m-%d  %H:%M:%S')
 
-CPU Temperature
-  $TEMP
+CPU Temp : $TEMP
+Disk (/) : $DISK
 
-Disk Usage (/)
-  $DISK
+Services:$(echo -e "$SVC_LINES")
 
-Systemd Services$(echo -e "$SVC_LINES")
-
-Docker Containers$(echo -e "$CTR_LINES")
+Containers:$(echo -e "$CTR_LINES")
 
 Press OK to return." \
-    28 $W
+    26 $W
 }
 
 # ── Config: Device & Thresholds ───────────────────────────────────────────────
@@ -269,32 +266,81 @@ config_modules() {
 
 # ── Config: Systemd Services ──────────────────────────────────────────────────
 config_services() {
-    CURRENT=$(cfg_read_list_str "['services_to_monitor']")
-    NEW=$(whiptail --title "$TITLE — Systemd Services" \
-        --inputbox \
-"Systemd services to monitor (space-separated).
-The watchdog checks these and auto-restarts if down.
+    while true; do
+        CURRENT=$(cfg_read_list_str "['services_to_monitor']")
+        [ -z "$CURRENT" ] && DISPLAY="(none)" || DISPLAY="$CURRENT"
 
-Example: ssh cron docker nginx" \
-        14 $W "$CURRENT" \
-        3>&1 1>&2 2>&3) || return
-    cfg_write_list "['services_to_monitor']" "$NEW"
-    whiptail --title "$TITLE" --msgbox "Services list saved." 8 40
+        CHOICE=$(whiptail --title "$TITLE — Systemd Services" \
+            --menu "Current: $DISPLAY" 14 $W 3 \
+            "1" "Add a service" \
+            "2" "Remove a service" \
+            "3" "Back" \
+            3>&1 1>&2 2>&3) || break
+
+        case $CHOICE in
+            1)
+                NEW=$(whiptail --title "$TITLE — Add Service" \
+                    --inputbox "Service name:" 8 $W "" \
+                    3>&1 1>&2 2>&3) || continue
+                [ -z "$NEW" ] && continue
+                UPDATED="$CURRENT $NEW"
+                cfg_write_list "['services_to_monitor']" "$UPDATED"
+                ;;
+            2)
+                if [ -z "$CURRENT" ]; then
+                    whiptail --title "$TITLE" --msgbox "No services to remove." 8 40
+                    continue
+                fi
+                OPTS=()
+                for s in $CURRENT; do OPTS+=("$s" "" OFF); done
+                REMOVE=$(whiptail --title "$TITLE — Remove Service" \
+                    --radiolist "Select service to remove:" 16 $W 8 \
+                    "${OPTS[@]}" \
+                    3>&1 1>&2 2>&3) || continue
+                UPDATED=$(echo "$CURRENT" | tr ' ' '\n' | grep -v "^${REMOVE}$" | tr '\n' ' ')
+                cfg_write_list "['services_to_monitor']" "$UPDATED"
+                ;;
+            3) break ;;
+        esac
+    done
 }
 
 # ── Config: Docker Containers ─────────────────────────────────────────────────
 config_containers() {
-    CURRENT=$(cfg_read_list_str "['containers_to_monitor']")
-    NEW=$(whiptail --title "$TITLE — Docker Containers" \
-        --inputbox \
-"Docker container names to monitor (space-separated).
-The watchdog checks these and runs 'docker restart' if down.
+    if ! command -v docker &>/dev/null; then
+        whiptail --title "$TITLE" --msgbox "Docker is not installed on this system." 8 $W
+        return
+    fi
 
-Example: my-nginx postgres redis" \
-        14 $W "$CURRENT" \
+    # Get all running containers from docker ps
+    RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null)
+    if [ -z "$RUNNING" ]; then
+        whiptail --title "$TITLE" --msgbox "No running containers found.\nStart your containers first, then come back." 10 $W
+        return
+    fi
+
+    # Get currently monitored containers to pre-tick them
+    MONITORED=$(cfg_read_list_str "['containers_to_monitor']")
+
+    # Build checklist: name  description  ON/OFF
+    OPTS=()
+    for ctr in $RUNNING; do
+        if echo " $MONITORED " | grep -qw "$ctr"; then
+            OPTS+=("$ctr" "" ON)
+        else
+            OPTS+=("$ctr" "" OFF)
+        fi
+    done
+
+    SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
+        --checklist "Select containers to monitor:" 20 $W 10 \
+        "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
-    cfg_write_list "['containers_to_monitor']" "$NEW"
-    whiptail --title "$TITLE" --msgbox "Containers list saved." 8 40
+
+    # Remove quotes whiptail adds around names
+    CLEAN=$(echo "$SELECTED" | tr -d '"')
+    cfg_write_list "['containers_to_monitor']" "$CLEAN"
+    whiptail --title "$TITLE" --msgbox "Containers saved." 8 40
 }
 
 # ── Apply & Install ───────────────────────────────────────────────────────────
