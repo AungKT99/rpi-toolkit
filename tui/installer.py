@@ -49,20 +49,14 @@ def setup_log_file():
 
 
 def install_dependencies():
-    """Install Python and system dependencies."""
+    """Install system-level packages via apt.
+    Python deps (textual, requests) are managed by uv — no pip needed here.
+    """
     yield "Updating apt package list…"
     _run(["apt-get", "update", "-y"])
     yield "Installing python3-pip and python3-requests…"
     _run(["apt-get", "install", "-y", "python3-pip", "python3-requests"])
-    yield "Installing textual and requests via pip…"
-    try:
-        _run(["pip3", "install", "-r",
-              os.path.join(INSTALL_DIR, "requirements.txt"),
-              "--break-system-packages"])
-    except subprocess.CalledProcessError:
-        _run(["pip3", "install", "-r",
-              os.path.join(INSTALL_DIR, "requirements.txt")])
-    yield "Dependencies installed."
+    yield "System dependencies installed."
 
 
 def setup_ip_notifier(config: dict):
