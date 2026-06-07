@@ -44,19 +44,14 @@ sudo git clone https://github.com/AungKT99/rpi-toolkit.git
 cd rpi-toolkit
 ```
 
-### 2. Install dependencies
-
-```bash
-pip3 install -r requirements.txt --break-system-packages
-```
-
-### 3. Launch the TUI
+### 2. Launch the TUI
 
 ```bash
 sudo ./rpi-toolkit
 ```
 
 > **Note:** `sudo` is required so the installer can configure systemd services and cron jobs.
+> Dependencies are installed automatically on first run.
 
 ---
 
