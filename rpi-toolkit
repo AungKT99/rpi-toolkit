@@ -314,35 +314,78 @@ config_containers() {
 
     # Get all running containers from docker ps
     RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null)
-    if [ -z "$RUNNING" ]; then
-        whiptail --title "$TITLE" --msgbox "No running containers found.\nStart your containers first, then come back." 10 $W
-        return
-    fi
 
     # Get currently monitored containers to pre-tick them
     MONITORED=$(cfg_read_list_str "['containers_to_monitor']")
 
-    # Build checklist: name  description  ON/OFF
-    # Use exact match loop — grep -qw breaks on hyphenated names
+    # If nothing is running and nothing is monitored, notify user
+    if [ -z "$RUNNING" ] && [ -z "$MONITORED" ]; then
+        whiptail --title "$TITLE" --msgbox "No running or monitored containers found.\nStart your containers first, then come back." 10 $W
+        return
+    fi
+
+    # Build checklist: tag  item  status
+    # We display running containers in one section, and offline monitored containers in another.
     OPTS=()
-    for ctr in $RUNNING; do
-        STATE=OFF
-        for mon in $MONITORED; do
-            if [ "$ctr" = "$mon" ]; then
-                STATE=ON
+
+    # Section 1: Running Containers
+    OPTS+=("=== RUNNING CONTAINERS ===" "------------------" "OFF")
+    if [ -z "$RUNNING" ]; then
+        OPTS+=("(no running containers found)" " " "OFF")
+    else
+        for ctr in $RUNNING; do
+            STATE=OFF
+            DESC="[Running / Not Monitored]"
+            for mon in $MONITORED; do
+                if [ "$ctr" = "$mon" ]; then
+                    STATE=ON
+                    DESC="[Running / Monitored]"
+                    break
+                fi
+            done
+            OPTS+=("$ctr" "$DESC" "$STATE")
+        done
+    fi
+
+    # Section 2: Monitored Containers
+    OPTS+=("=== MONITORED CONTAINERS ===" "------------------" "OFF")
+    HAS_OFFLINE=false
+    for mon in $MONITORED; do
+        IS_RUNNING=false
+        for ctr in $RUNNING; do
+            if [ "$mon" = "$ctr" ]; then
+                IS_RUNNING=true
                 break
             fi
         done
-        OPTS+=("$ctr" "" $STATE)
+        if [ "$IS_RUNNING" = false ]; then
+            OPTS+=("$mon" "[Monitored / Stopped]" "ON")
+            HAS_OFFLINE=true
+        fi
     done
+    if [ "$HAS_OFFLINE" = false ]; then
+        OPTS+=("(no stopped containers monitored)" " " "OFF")
+    fi
 
     SELECTED=$(whiptail --title "$TITLE — Docker Containers" \
         --checklist "Select containers to monitor:" 20 $W 10 \
         "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
 
-    # Remove quotes whiptail adds around names
-    CLEAN=$(echo "$SELECTED" | tr -d '"')
+    # Remove quotes whiptail adds around names and filter out section headers/placeholders
+    CLEAN=""
+    for item in $SELECTED; do
+        val=$(echo "$item" | tr -d '"')
+        if [ "$val" = "=== RUNNING CONTAINERS ===" ] || \
+           [ "$val" = "=== MONITORED CONTAINERS ===" ] || \
+           [ "$val" = "(no running containers found)" ] || \
+           [ "$val" = "(no stopped containers monitored)" ] || \
+           [ -z "$val" ]; then
+            continue
+        fi
+        CLEAN="$CLEAN $val"
+    done
+
     cfg_write_list "['containers_to_monitor']" "$CLEAN"
     whiptail --title "$TITLE" --msgbox "Containers saved." 8 40
 }
