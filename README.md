@@ -44,14 +44,26 @@ sudo git clone https://github.com/AungKT99/rpi-toolkit.git
 cd rpi-toolkit
 ```
 
-### 2. Launch the TUI
+### 2. Install uv
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then make `uv` available to `sudo`:
+
+```bash
+sudo ln -s ~/.local/bin/uv /usr/local/bin/uv
+```
+
+### 3. Launch the TUI
 
 ```bash
 sudo ./rpi-toolkit
 ```
 
 > **Note:** `sudo` is required so the installer can configure systemd services and cron jobs.
-> Dependencies are installed automatically on first run.
+> On first run, `uv` automatically resolves and installs all Python dependencies.
 
 ---
 

@@ -5,46 +5,62 @@ rpi-toolkit — single entrypoint.
 Usage:
     sudo ./rpi-toolkit
 
-Launches the interactive TUI for configuring and
-monitoring your Raspberry Pi 5.
+Requires uv to be installed:
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    sudo ln -s ~/.local/bin/uv /usr/local/bin/uv   # make available to sudo
 """
 
 import os
 import sys
+import shutil
 
-# Ensure the project root is on sys.path so `tui` package is importable
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 
-def _check_textual():
-    """Offer to install textual if it's missing."""
-    try:
-        import textual  # noqa: F401
-    except ImportError:
-        print("textual is not installed.")
-        answer = input("Install it now? [Y/n]: ").strip().lower()
-        if answer in ("", "y", "yes"):
-            import subprocess
-            try:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "textual", "requests",
-                     "--break-system-packages"],
-                    check=True,
-                )
-            except subprocess.CalledProcessError:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "textual", "requests"],
-                    check=True,
-                )
-        else:
-            print("Cannot launch TUI without textual. Exiting.")
-            sys.exit(1)
+def _find_uv() -> str | None:
+    """Search common locations for the uv binary."""
+    candidates = [
+        shutil.which("uv"),
+        "/usr/local/bin/uv",
+        "/root/.local/bin/uv",
+        os.path.expanduser("~/.local/bin/uv"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return None
+
+
+def _managed_by_uv() -> bool:
+    """True if we are already running inside a uv-managed environment."""
+    return (
+        "UV_PROJECT_ENVIRONMENT" in os.environ
+        or os.environ.get("VIRTUAL_ENV", "").startswith(PROJECT_ROOT)
+    )
 
 
 if __name__ == "__main__":
-    _check_textual()
+    if not _managed_by_uv():
+        uv = _find_uv()
 
+        if not uv:
+            print("Error: uv is not installed.")
+            print()
+            print("Install it with:")
+            print("  curl -LsSf https://astral.sh/uv/install.sh | sh")
+            print()
+            print("Then make it available to sudo:")
+            print("  sudo ln -s ~/.local/bin/uv /usr/local/bin/uv")
+            print()
+            print("Then re-run:  sudo ./rpi-toolkit")
+            sys.exit(1)
+
+        # Re-exec this script under uv — it will resolve deps automatically
+        os.execv(uv, [uv, "run", "--project", PROJECT_ROOT, sys.argv[0]] + sys.argv[1:])
+
+    # Running inside uv-managed env — launch the TUI
     from tui.app import main
     main()
