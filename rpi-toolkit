@@ -306,6 +306,48 @@ config_services() {
 }
 
 # ── Config: Docker Containers ─────────────────────────────────────────────────
+# Helper functions for docker configuration using Python directly for robust parsing
+read_monitored_containers() {
+    python3 - "$CONFIG_FILE" <<'PYEOF' 2>/dev/null
+import sys
+import json
+try:
+    with open(sys.argv[1], 'r') as f:
+        config = json.load(f)
+    print(' '.join(config.get('containers_to_monitor', [])))
+except Exception:
+    pass
+PYEOF
+}
+
+save_monitored_containers() {
+    python3 - "$CONFIG_FILE" "$1" <<'PYEOF' 2>/dev/null
+import sys
+import json
+import shlex
+
+config_file = sys.argv[1]
+raw_selected = sys.argv[2]
+
+try:
+    selected_list = shlex.split(raw_selected)
+except Exception:
+    selected_list = []
+
+ignored_tags = {"header_running", "header_monitored", "no_running", "no_monitored"}
+cleaned_list = [tag for tag in selected_list if tag not in ignored_tags and tag.strip()]
+
+try:
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    config['containers_to_monitor'] = cleaned_list
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+except Exception:
+    pass
+PYEOF
+}
+
 config_containers() {
     if ! command -v docker &>/dev/null; then
         whiptail --title "$TITLE" --msgbox "Docker is not installed on this system." 8 $W
@@ -316,7 +358,7 @@ config_containers() {
     RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null)
 
     # Get currently monitored containers to pre-tick them
-    MONITORED=$(cfg_read_list_str "['containers_to_monitor']")
+    MONITORED=$(read_monitored_containers)
 
     # Build checklist: tag  item  status
     # We display running containers in one section, and offline monitored containers in another.
@@ -366,20 +408,7 @@ config_containers() {
         "${OPTS[@]}" \
         3>&1 1>&2 2>&3) || return
 
-    # Strip double quotes whiptail adds and parse space-separated items
-    CLEAN=""
-    for val in $(echo "$SELECTED" | tr -d '"'); do
-        if [ "$val" = "header_running" ] || \
-           [ "$val" = "header_monitored" ] || \
-           [ "$val" = "no_running" ] || \
-           [ "$val" = "no_monitored" ] || \
-           [ -z "$val" ]; then
-            continue
-        fi
-        CLEAN="$CLEAN $val"
-    done
-
-    cfg_write_list "['containers_to_monitor']" "$CLEAN"
+    save_monitored_containers "$SELECTED"
     whiptail --title "$TITLE" --msgbox "Containers saved." 8 40
 }
 
